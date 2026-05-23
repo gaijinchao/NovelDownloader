@@ -7,12 +7,17 @@
 ## 功能
 
 - 粘贴 `/page/书籍ID` 链接下载
-- 书库管理：查看已下载小说、更新、删除
+- 书库管理：阅读已下载小说、更新、删除
 - 下载队列：批量排队，支持暂停 / 取消 / 清空
 - **断点续传**：中断后再次下载同一本书会从上次进度继续
 - 在线阅读（点击书库卡片）
-- 首次下载自动打开浏览器登录（Playwright），无需 Cookie Editor 插件
+- 首次下载自动打开浏览器登录
 - 默认下载前 **10** 章（SVIP用户可在网页端下载全部章节）
+
+<img width="2864" height="1536" alt="9eb52a37023a90d45b409ccd816763cc" src="https://github.com/user-attachments/assets/acc85c62-59dc-45c3-afb2-887a19b754ec" />
+<img width="2864" height="1536" alt="4ba8422787b6d2a49cf74d691b7a8ad8" src="https://github.com/user-attachments/assets/ab5e8726-ed2f-4cc0-b8fe-21d7b7393490" />
+<img width="2864" height="1536" alt="b9e997f0d3278060eb5fbdcefccdb31d" src="https://github.com/user-attachments/assets/2b07cef1-abad-49d2-aeae-ee9351de25c8" />
+
 
 ## 环境要求
 
@@ -107,14 +112,6 @@ pip install curl_cffi
 
 确保 `src/templates/` 下 HTML 文件为 **UTF-8** 编码保存。
 
-## 环境变量（可选）
-
-| 变量 | 说明 |
-|------|------|
-| `FANQIE_MAX_CHAPTERS` | 默认下载章节数（默认 `10`） |
-| `FANQIE_DELAY_MIN` / `FANQIE_DELAY_MAX` | 章节间隔毫秒上下限 |
-| `FANQIE_PORT` | 监听端口（默认 `12930`） |
-| `FANQIE_SKIP_AUTO_COOKIE` | Web 版默认 `1`，禁用暴力猜 Cookie |
 
 ## 免责声明
 
