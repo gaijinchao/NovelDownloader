@@ -574,6 +574,32 @@ def cookie_login():
     finally:
         cookie_state['initializing'] = False
 
+
+@app.route('/api/cookie/clear', methods=['POST'])
+def cookie_clear():
+    """Remove saved cookie and reset downloader login state."""
+    global cookie_state
+    removed = []
+    for name in ('cookie.json', 'cookie_raw.txt'):
+        path = os.path.join(DATA_DIR, name)
+        if os.path.exists(path):
+            os.remove(path)
+            removed.append(name)
+
+    downloader.cookie = ''
+    downloader.cookie_ready = False
+    cookie_state['ready'] = False
+    cookie_state['initializing'] = False
+    cookie_state['error'] = None
+    cookie_state['message'] = 'Cookie 已清除，下次下载时将重新打开浏览器登录'
+
+    return jsonify({
+        'status': 'success',
+        'message': cookie_state['message'],
+        'removed': removed,
+    })
+
+
 @app.route('/api/novels')
 def list_novels():
     """List downloaded novels with their status"""
