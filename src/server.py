@@ -59,6 +59,10 @@ config.chapter_start = 1
 config.chapter_end = int(os.environ.get('FANQIE_MAX_CHAPTERS', '10'))
 
 class NovelDownloaderWrapper(NovelDownloader):
+    def ensure_cookie_ready(self, browser_profile_dir=None):
+        super().ensure_cookie_ready(browser_profile_dir=browser_profile_dir)
+        _refresh_cookie_state(emit_update=True)
+
     def _load_progress(self, json_path: str) -> dict:
         if not os.path.exists(json_path):
             return {}
@@ -233,6 +237,56 @@ downloader = NovelDownloaderWrapper(
 )
 
 
+def _cookie_status_payload() -> dict:
+    ready = cookie_state['ready'] or getattr(downloader, 'cookie_ready', False)
+    cookie_path = os.path.join(DATA_DIR, 'cookie.json')
+    return {
+        'ready': ready,
+        'initializing': cookie_state.get('initializing', False) and not ready,
+        'error': cookie_state['error'],
+        'message': cookie_state['message'],
+        'has_file': os.path.isfile(cookie_path),
+        'hint': '粘贴书籍目录页链接（/page/ID）即可下载；首次下载会自动打开浏览器登录',
+        'cookie_file': cookie_path,
+    }
+
+
+def _refresh_cookie_state(emit_update: bool = False) -> None:
+    """Derive cookie_state from cookie file and downloader memory state."""
+    global cookie_state
+    cookie_path = os.path.join(DATA_DIR, 'cookie.json')
+    has_file = os.path.isfile(cookie_path)
+    stored = None
+    if has_file:
+        try:
+            stored = downloader._load_stored_cookie()
+        except Exception as e:
+            logger.debug('Could not read cookie file: %s', e)
+
+    memory_ready = bool(getattr(downloader, 'cookie_ready', False))
+
+    if memory_ready and stored:
+        cookie_state['ready'] = True
+        cookie_state['error'] = None
+        cookie_state['message'] = 'Cookie 已就绪，可以下载'
+    elif has_file and stored and downloader._is_full_browser_cookie(stored):
+        cookie_state['ready'] = False
+        cookie_state['error'] = None
+        cookie_state['message'] = 'Cookie 已保存，开始下载时自动加载'
+    elif has_file and stored:
+        cookie_state['ready'] = False
+        cookie_state['error'] = None
+        cookie_state['message'] = 'Cookie 可能已过期，下载时将自动打开浏览器重新登录'
+    else:
+        cookie_state['ready'] = False
+        if not cookie_state.get('error'):
+            cookie_state['error'] = None
+            cookie_state['message'] = '未登录，首次下载时将自动打开浏览器登录'
+
+    if emit_update:
+        socketio.emit('cookie_update', _cookie_status_payload())
+
+
 def _background_cookie_init():
     global cookie_state
     cookie_state['initializing'] = True
@@ -242,17 +296,7 @@ def _background_cookie_init():
         if stored and downloader._is_full_browser_cookie(stored):
             downloader.cookie = stored
             downloader.cookie_ready = True
-            cookie_state['ready'] = True
-            cookie_state['error'] = None
-            cookie_state['message'] = 'Cookie 已加载，可以下载'
-        elif stored:
-            cookie_state['ready'] = False
-            cookie_state['error'] = None
-            cookie_state['message'] = 'Cookie 可能已过期，下载时将自动打开浏览器重新登录'
-        else:
-            cookie_state['ready'] = False
-            cookie_state['error'] = None
-            cookie_state['message'] = '首次下载时将自动打开浏览器，请登录番茄小说'
+        _refresh_cookie_state()
     except Exception as e:
         cookie_state['ready'] = False
         cookie_state['error'] = str(e)
@@ -260,6 +304,7 @@ def _background_cookie_init():
         logger.error('Cookie check failed: %s', e)
     finally:
         cookie_state['initializing'] = False
+        socketio.emit('cookie_update', _cookie_status_payload())
 
 
 threading.Thread(target=_background_cookie_init, daemon=True).start()
@@ -532,15 +577,9 @@ def index():
 
 @app.route('/api/cookie/status')
 def cookie_status():
-    ready = cookie_state['ready'] or getattr(downloader, 'cookie_ready', False)
-    return jsonify({
-        'ready': ready,
-        'initializing': cookie_state.get('initializing', False) and not ready,
-        'error': cookie_state['error'],
-        'message': cookie_state['message'],
-        'hint': '粘贴书籍目录页链接（/page/ID）即可下载；首次下载会自动打开浏览器登录',
-        'cookie_file': os.path.join(DATA_DIR, 'cookie.json'),
-    })
+    if not cookie_state.get('initializing'):
+        _refresh_cookie_state()
+    return jsonify(_cookie_status_payload())
 
 
 @app.route('/api/cookie/login', methods=['POST'])
@@ -558,12 +597,9 @@ def cookie_login():
             socketio.emit('log', {'message': msg})
 
         login_and_save_cookie(cookie_path, profile_dir=profile, log=_log)
-        downloader.cookie = None
+        downloader.cookie = ''
         downloader.cookie_ready = False
         downloader.ensure_cookie_ready(browser_profile_dir=profile)
-        cookie_state['ready'] = True
-        cookie_state['error'] = None
-        cookie_state['message'] = 'Cookie 已就绪，可以下载'
         return jsonify({'status': 'success', 'message': cookie_state['message']})
     except Exception as e:
         cookie_state['ready'] = False
@@ -573,6 +609,10 @@ def cookie_login():
         return jsonify({'error': str(e)}), 500
     finally:
         cookie_state['initializing'] = False
+        if not cookie_state.get('error'):
+            _refresh_cookie_state(emit_update=True)
+        else:
+            socketio.emit('cookie_update', _cookie_status_payload())
 
 
 @app.route('/api/cookie/clear', methods=['POST'])
@@ -588,10 +628,11 @@ def cookie_clear():
 
     downloader.cookie = ''
     downloader.cookie_ready = False
-    cookie_state['ready'] = False
     cookie_state['initializing'] = False
     cookie_state['error'] = None
+    cookie_state['ready'] = False
     cookie_state['message'] = 'Cookie 已清除，下次下载时将重新打开浏览器登录'
+    socketio.emit('cookie_update', _cookie_status_payload())
 
     return jsonify({
         'status': 'success',
