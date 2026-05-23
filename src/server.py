@@ -2,7 +2,7 @@ from gevent import monkey
 monkey.patch_all()
 
 from flask import Flask, render_template, jsonify, send_file, request
-from flask_socketio import SocketIO, emit
+from flask_socketio import SocketIO
 from main import NovelDownloader, Config, CookieInitError, COOKIE_SETUP_HINT
 import os
 import threading
@@ -13,7 +13,6 @@ import json
 import re
 from functools import wraps
 import random
-from functools import lru_cache
 import traceback
 import webbrowser
 import socket
@@ -58,17 +57,8 @@ config.delay = [int(os.environ.get('FANQIE_DELAY_MIN', '1500')),
                 int(os.environ.get('FANQIE_DELAY_MAX', '3500'))]
 config.chapter_start = 1
 config.chapter_end = int(os.environ.get('FANQIE_MAX_CHAPTERS', '10'))
-config.max_chapters = config.chapter_end
 
-# 修改下载器初始化部分
 class NovelDownloaderWrapper(NovelDownloader):
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        self.book_json_path = None
-        self.zj = {}
-        self.cs = 0
-        self.tcs = 0
-
     def _load_progress(self, json_path: str) -> dict:
         if not os.path.exists(json_path):
             return {}
@@ -218,25 +208,6 @@ class NovelDownloaderWrapper(NovelDownloader):
         except Exception as e:
             self.log_callback(f'下载失败: {str(e)}')
             return 'err'
-
-    def get_novel_content(self, novel_id: str) -> dict:
-        """Get novel content from memory or file"""
-        try:
-            name, chapters, _ = self._get_chapter_list(novel_id)
-            if name == 'err':
-                return None
-                
-            safe_name = _sanitize_filename(name)
-            json_path = os.path.join(BOOKSTORE_DIR, f'{novel_id}_{safe_name}.json')
-            
-            if os.path.exists(json_path):
-                with open(json_path, 'r', encoding='UTF-8') as f:
-                    data = json.load(f)
-                    return data.get('chapters', {})  # 返回章节内容
-            return None
-        except Exception as e:
-            logger.error(f"Error getting novel content: {str(e)}")
-            return None
 
 # Cookie 状态（Web 先启动，后台再初始化 Cookie）
 cookie_state = {
@@ -461,12 +432,10 @@ def _resolve_download_range(novel_id) -> tuple[int, int]:
     override = download_queue.take_range(novel_id)
     if override:
         return override
-    start = int(getattr(config, 'chapter_start', 1) or 1)
-    end = int(getattr(config, 'chapter_end', 10))
-    if not hasattr(config, 'chapter_start'):
-        mc = int(getattr(config, 'max_chapters', 10) or 10)
-        return 1, mc if mc > 0 else 0
-    return start, end
+    return (
+        int(getattr(config, 'chapter_start', 1) or 1),
+        int(getattr(config, 'chapter_end', 10)),
+    )
 
 
 def _apply_chapter_range_settings(data: dict) -> None:
@@ -474,12 +443,10 @@ def _apply_chapter_range_settings(data: dict) -> None:
     if 'chapter_start' in data or 'chapter_end' in data:
         config.chapter_start = max(1, int(data.get('chapter_start', config.chapter_start)))
         config.chapter_end = int(data.get('chapter_end', config.chapter_end))
-        config.max_chapters = config.chapter_end
     elif 'max_chapters' in data:
         mc = int(data['max_chapters'])
         config.chapter_start = 1
         config.chapter_end = mc
-        config.max_chapters = mc
 
 
 def _resolve_novel_name(novel_id: str) -> str:
@@ -525,8 +492,6 @@ def load_config():
             with open(CONFIG_FILE, 'r', encoding='UTF-8') as f:
                 saved_config = json.load(f)
 
-                config.kg = saved_config.get('kg', config.kg)
-                config.kgf = saved_config.get('kgf', config.kgf)
                 config.delay = saved_config.get('delay', config.delay)
                 config.save_path = saved_config.get('save_path', DOWNLOADS_DIR)
                 config.xc = 1
@@ -537,7 +502,6 @@ def load_config():
                     mc = int(saved_config.get('max_chapters', config.chapter_end))
                     config.chapter_start = 1
                     config.chapter_end = mc if mc > 0 else 0
-                config.max_chapters = config.chapter_end
 
                 logger.info("Configuration loaded successfully")
     except Exception as e:
@@ -547,14 +511,11 @@ def save_config():
     """Save current configuration"""
     try:
         config_data = {
-            'kg': config.kg,
-            'kgf': config.kgf,
             'delay': config.delay,
             'save_path': config.save_path,
             'xc': config.xc,
             'chapter_start': config.chapter_start,
             'chapter_end': config.chapter_end,
-            'max_chapters': config.chapter_end,
         }
         
         with open(CONFIG_FILE, 'w', encoding='UTF-8') as f:
@@ -674,26 +635,6 @@ def delete_novel(novel_id):
         return jsonify({'error': '未找到该小说'}), 404
     return jsonify({'status': 'success', 'deleted': removed})
 
-def sort_chapters(chapters):
-    """Sort chapters in correct order"""
-    # 获取原始章节表
-    name, original_chapters, _ = downloader._get_chapter_list(novel_id)
-    if name == 'err':
-        return chapters
-        
-    # 使用原始章节列表的顺序来排序
-    sorted_chapters = {}
-    for title in original_chapters.keys():
-        if title in chapters:
-            sorted_chapters[title] = chapters[title]
-    
-    # 添加可能存在的额外章节（不在原始列表中的）
-    for title, content in chapters.items():
-        if title not in sorted_chapters:
-            sorted_chapters[title] = content
-            
-    return sorted_chapters
-
 # 优化路由处理：仅加入队列（TXT + 断点续传 + 暂停/取消）
 @app.route('/api/download/<novel_id>', methods=['GET', 'POST'])
 @handle_errors
@@ -744,17 +685,11 @@ def download_novel(novel_id):
         ),
     })
 
-# 添加基本的安全检查
-def sanitize_input(text):
-    return re.sub(r'[<>:"/\\|?*]', '', text)
-
 @app.route('/api/settings', methods=['GET', 'POST'])
 def settings():
     if request.method == 'POST':
         try:
             data = request.json
-            config.kg = data.get('kg', config.kg)
-            config.kgf = data.get('kgf', config.kgf)
             config.delay = data.get('delay', config.delay)
             config.xc = 1
             _apply_chapter_range_settings(data)
@@ -768,13 +703,10 @@ def settings():
             return jsonify({'error': str(e)}), 500
             
     return jsonify({
-        'kg': config.kg,
-        'kgf': config.kgf,
         'delay': config.delay,
         'xc': config.xc,
         'chapter_start': config.chapter_start,
         'chapter_end': config.chapter_end,
-        'max_chapters': config.chapter_end,
     })
 
 @app.route('/download/<path:filename>')
@@ -1107,82 +1039,6 @@ def handle_error(error):
         'details': traceback.format_exc()
     }), 500
 
-@lru_cache(maxsize=100)
-def get_chapter_content(novel_id, chapter_title):
-    try:
-        name, chapters, _ = downloader._get_chapter_list(novel_id)
-        if name == 'err':
-            return None
-            
-        safe_name = _sanitize_filename(name)
-        json_path = os.path.join(BOOKSTORE_DIR, f'{safe_name}.json')
-        
-        if os.path.exists(json_path):
-            with open(json_path, 'r', encoding='UTF-8') as f:
-                novel_data = json.load(f)
-                return novel_data.get(chapter_title)
-        return None
-    except Exception as e:
-        logger.error(f"Error getting chapter content: {str(e)}")
-        return None
-
-def save_progress(novel_id, name, novel_content):
-    """保存下载进度到JSON文件"""
-    try:
-        safe_name = _sanitize_filename(name)
-        json_path = os.path.join(BOOKSTORE_DIR, f'{novel_id}_{safe_name}.json')
-        
-        novel_data = {
-            '_meta': {
-                'novel_id': novel_id,
-                'name': name,
-                'download_time': time.strftime('%Y-%m-%d %H:%M:%S'),
-                'total_chapters': len(novel_content)
-            },
-            'chapters': novel_content
-        }
-        
-        with open(json_path, 'w', encoding='UTF-8') as f:
-            json.dump(novel_data, f, ensure_ascii=False, indent=4)
-            
-        logger.info(f"Progress saved to: {json_path}")
-    except Exception as e:
-        logger.error(f"Error saving progress: {str(e)}")
-
-def sort_chapter_list(chapter_list):
-    """改进的章节排序逻辑"""
-    def extract_chapter_number(title):
-        # 尝试多种匹配模式
-        patterns = [
-            r'第(\d+)章',
-            r'第(\d+)节',
-            r'(\d+)',
-            r'第([一二三四五六七八九十百千万]+)章'
-        ]
-        
-        for pattern in patterns:
-            match = re.search(pattern, title)
-            if match:
-                num = match.group(1)
-                if num.isdigit():
-                    return int(num)
-                # 处理中文数字
-                return cn2num(num) if any(c in num for c in '一二三四五六七八九十百千万') else float('inf')
-        return float('inf')
-    
-    def cn2num(cn):
-        """将中文数字转换为阿拉伯数字"""
-        cn_num = {'一':1, '二':2, '三':3, '四':4, '五':5, 
-                 '六':6, '七':7, '八':8, '九':9, '十':10,
-                 '百':100, '千':1000, '万':10000}
-        # 简单转换逻辑，可以根据需要扩展
-        if len(cn) == 1:
-            return cn_num.get(cn, float('inf'))
-        return float('inf')
-    
-    # 排序
-    return sorted(chapter_list, key=lambda x: (extract_chapter_number(x[0]), chapter_list.index(x)))
-
 def check_chapter_content(content: str) -> bool:
     """检查章节内容是否完整有效"""
     if not content:
@@ -1273,10 +1129,6 @@ def _open_browser_when_ready(port: int) -> None:
 if __name__ == '__main__':
     load_config()
     config.xc = 1
-    if not hasattr(config, 'chapter_start'):
-        config.chapter_start = 1
-    if not hasattr(config, 'chapter_end') or config.chapter_end is None:
-        config.chapter_end = int(getattr(config, 'max_chapters', 10) or 10)
 
     app.debug = False
     print_server_info()

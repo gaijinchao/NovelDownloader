@@ -7,14 +7,12 @@ except ImportError:
     curl_req = None
     HAS_CURL_CFFI = False
 from lxml import etree
-from tqdm import tqdm
 import json
 import time
 import random
 import os
-import concurrent.futures
 import threading
-from typing import Callable, Optional, Dict, List, Union
+from typing import Callable, Optional, Dict, List
 from dataclasses import dataclass
 
 
@@ -76,12 +74,9 @@ def load_cookie_from_file(path: str) -> Optional[str]:
 
 @dataclass
 class Config:
-    kg: int = 0
-    kgf: str = '　'
     delay: List[int] = None
     save_path: str = ''
     xc: int = 16
-    max_chapters: int = 0  # 已弃用，请用 chapter_start / chapter_end
     chapter_start: int = 1   # 1-based 起始章
     chapter_end: int = 10    # 1-based 结束章，0 = 至全书末尾
 
@@ -116,8 +111,6 @@ class NovelDownloader:
         self.script_dir = os.path.dirname(os.path.abspath(__file__))
         self.data_dir = os.path.join(self.script_dir, 'data')
         self.bookstore_dir = os.path.join(self.data_dir, 'bookstore')
-        self.record_path = os.path.join(self.data_dir, 'record.json')
-        self.config_path = os.path.join(self.data_dir, 'config.json')
         self.cookie_path = os.path.join(self.data_dir, 'cookie.json')
 
         self.CODE = [[58344, 58715], [58345, 58716]]
@@ -143,9 +136,6 @@ class NovelDownloader:
 
         # Add these variables
         self.zj = {}  # For storing chapter data
-        self.cs = 0  # Chapter counter
-        self.tcs = 0  # Test counter
-        self.tzj = None  # Test chapter ID
         self.book_json_path = None  # Current book's JSON path
         # 限制同时请求阅读页的数量，降低触发验证码概率
         self._chapter_request_semaphore = threading.Semaphore(
@@ -256,33 +246,10 @@ class NovelDownloader:
         self._get_new_cookie(tzj)
         self.log_callback('Cookie 获取成功')
 
-    @dataclass
-    class DownloadProgress:
-        """Progress info for both CLI and web"""
-        current: int
-        total: int
-        percentage: float
-        description: str
-        chapter_title: Optional[str] = None
-        status: str = 'downloading'  # 'downloading', 'completed', 'error'
-        error: Optional[str] = None
-
     def _default_progress(self, current: int, total: int, desc: str = '',
-                          chapter_title: str = None) -> DownloadProgress:
-        """Progress tracking for both CLI and web"""
-        # For CLI: Use tqdm directly
-        if not hasattr(self, '_pbar'):
-            self._pbar = tqdm(total=total, desc=desc)
-        self._pbar.update(1)  # Update by 1 instead of setting n directly
-
-        # For web: Return progress info
-        return DownloadProgress(
-            current=current,
-            total=total,
-            percentage=(current / total * 100) if total > 0 else 0,
-            description=desc,
-            chapter_title=chapter_title
-        )
+                          chapter_title: str = None) -> None:
+        """Fallback progress hook when no web callback is provided."""
+        pass
 
     def _download_chapter(self, title: str, chapter_id: str, existing_content: Dict) -> Optional[str]:
         """Download a single chapter with retries"""
@@ -319,12 +286,6 @@ class NovelDownloader:
 
                 if content == 'err' or not content:
                     raise Exception('Download failed')
-
-                # Save progress periodically
-                self.cs += 1
-                if self.cs >= 5:
-                    self.cs = 0
-                    self._save_progress(title, content)
 
                 self.zj[title] = content
                 return content
@@ -474,37 +435,6 @@ class NovelDownloader:
                     )
                 time.sleep(2 + attempt)
 
-    def _sanitize_filename(self, filename: str) -> str:
-        """Sanitize filename for different platforms"""
-        illegal_chars = ['<', '>', ':', '"', '/', '\\', '|', '?', '*']
-        illegal_chars_rep = ['＜', '＞', '：', '＂', '／', '＼', '｜', '？', '＊']
-        for old, new in zip(illegal_chars, illegal_chars_rep):
-            filename = filename.replace(old, new)
-        return filename
-
-    def _parse_novel_id(self, novel_id: Union[str, int]) -> Optional[int]:
-        """Parse novel ID from input (URL or ID)"""
-        raw = novel_id
-        if isinstance(novel_id, str):
-            if '/reader/' in novel_id:
-                self.log_callback(
-                    '这是章节阅读页链接（/reader/章节ID），不能用于下载整本书。'
-                    '请在浏览器打开该书目录页，复制 /page/书籍ID 的链接后再试。'
-                )
-                return None
-            if novel_id.startswith('http'):
-                if '/page/' not in novel_id:
-                    self.log_callback(
-                        '无法识别的链接。请使用书籍目录页：https://fanqienovel.com/page/书籍ID'
-                    )
-                    return None
-                novel_id = novel_id.split('?')[0].split('/')[-1]
-        try:
-            return int(novel_id)
-        except ValueError:
-            self.log_callback(f'Invalid novel ID: {raw}')
-            return None
-
     def _decode_content(self, content: str, mode: int = 0) -> str:
         """Decode novel content using both charset modes"""
         result = ''
@@ -519,11 +449,4 @@ class NovelDownloader:
             else:
                 result += char
         return result
-
-    def _save_progress(self, title: str, content: str):
-        """Save download progress"""
-        self.zj[title] = content
-        with open(self.book_json_path, 'w', encoding='UTF-8') as f:
-            json.dump(self.zj, f, ensure_ascii=False)
-
 
