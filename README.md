@@ -31,7 +31,7 @@
 
 若端口 12930 被占用，程序会自动尝试释放。
 
-### 手动启动（进阶）
+### 手动启动
 
 ```bash
 cd fanqienovel-downloader-main
@@ -46,15 +46,14 @@ cd src
 python server.py
 ```
 
-浏览器访问：**http://localhost:12930**（手动启动时可在运行前设置 `set FANQIE_OPEN_BROWSER=1` 自动打开）。
+浏览器访问：**http://localhost:12930**
 
 ## 使用流程
 
-1. 启动 `python server.py`
-2. 在书库页粘贴书籍**目录页**链接，例如：  
+1. 在书库页粘贴书籍**目录页**链接，例如：  
    `https://fanqienovel.com/page/7558397007656668185`
-3. 首次下载会弹出浏览器，登录番茄小说账号
-4. 下载完成后 TXT 保存在 `src/novel_downloads/`，元数据在 `src/data/bookstore/`
+2. 首次下载会弹出浏览器，登录番茄小说账号
+3. 下载完成后 TXT 保存在 `src/novel_downloads/`，元数据在 `src/data/bookstore/`
 
 > 请使用 `/page/` 目录页链接，不要使用 `/reader/` 章节阅读页链接。
 
