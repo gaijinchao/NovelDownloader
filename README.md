@@ -123,7 +123,7 @@ This program is for educational and research purposes only. Users are responsibl
 
 ## 开源
 
-本项目基于原项目精简，原程序遵循 [AGPL-3.0](https://github.com/ying-ck/fanqienovel-downloader?tab=AGPL-3.0-1-ov-file) 协议。
+本项目基于原项目重构，原程序遵循 [AGPL-3.0](https://github.com/ying-ck/fanqienovel-downloader?tab=AGPL-3.0-1-ov-file) 协议。
 
 ## 致谢
 
