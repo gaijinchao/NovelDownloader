@@ -1,0 +1,37 @@
+<div class="settings-container">
+<div class="card shadow-sm">
+<div class="card-header bg-dark text-white">
+<h5 class="card-title mb-0"><i class="bi bi-gear"></i> 设置</h5>
+</div>
+<div class="card-body">
+<form id="settingsForm">
+<div class="mb-4">
+<label class="form-label" for="kgf"><i class="bi bi-text-paragraph"></i> 正文段首占位符</label>
+<input type="text" class="form-control" id="kgf" name="kgf">
+<input type="number" class="form-control mt-2" id="kg" name="kg" placeholder="占位符数量">
+</div>
+<div class="mb-4">
+<label class="form-label"><i class="bi bi-clock"></i> 章节下载间隔延迟（毫秒）</label>
+<div class="row">
+<div class="col"><div class="input-group"><span class="input-group-text">最小</span><input type="number" class="form-control" id="delayMin"></div></div>
+<div class="col"><div class="input-group"><span class="input-group-text">最大</span><input type="number" class="form-control" id="delayMax"></div></div>
+</div>
+</div>
+<div class="mb-4">
+<label class="form-label"><i class="bi bi-list-ol"></i> 默认下载章节范围</label>
+<div class="row g-2">
+<div class="col-md-6"><div class="input-group"><span class="input-group-text">起始章</span><input type="number" class="form-control" id="chapterStart" min="1" value="1"></div></div>
+<div class="col-md-6"><div class="input-group"><span class="input-group-text">结束章</span><input type="number" class="form-control" id="chapterEnd" min="0" value="10"></div></div>
+</div>
+<small class="text-muted">默认第 1–10 章；结束章填 <code>0</code> 表示下载至全书末尾。保存后立即生效，无需重启服务。</small>
+</div>
+<div class="mb-4">
+<label class="form-label"><i class="bi bi-file-earmark"></i> 保存方式</label>
+<input type="text" class="form-control" value="单个 TXT 文件（Web 版固定）" readonly>
+<input type="hidden" id="xc" value="1">
+</div>
+<button type="submit" class="btn btn-dark"><i class="bi bi-save"></i> 保存设置</button>
+</form>
+</div>
+</div>
+</div>

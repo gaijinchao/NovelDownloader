@@ -1,0 +1,10 @@
+tqdm
+requests
+urllib3
+lxml
+Flask
+Flask-SocketIO
+gevent
+gevent-websocket
+curl_cffi
+playwright
