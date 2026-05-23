@@ -215,6 +215,25 @@ class NovelDownloader:
         except Exception:
             return False
 
+    def _get_initial_chapter_id(self) -> int:
+        """Pick a chapter ID from a public novel for cookie validation."""
+        test_novel_id = 7143038691944959011
+        name, chapters, _ = self._get_chapter_list(test_novel_id)
+        if name != 'err' and len(chapters) > 21:
+            return int(random.choice(list(chapters.values())[21:]))
+        raise Exception('Failed to get initial chapter ID')
+
+    def _get_new_cookie(self, chapter_id: int):
+        """Try auto-generating novel_web_id cookie (disabled on Web by default)."""
+        bas = 1000000000000000000
+        for i in range(random.randint(bas * 6, bas * 8), bas * 9):
+            time.sleep(random.randint(50, 150) / 1000)
+            self.cookie = f'novel_web_id={i}'
+            if len(self._download_chapter_content(chapter_id, test_mode=True)) > 200:
+                self._persist_cookie()
+                return
+        raise CookieInitError('自动生成 Cookie 失败。' + COOKIE_SETUP_HINT)
+
     def _init_cookie(self):
         """Initialize cookie for downloads"""
         self.log_callback('正在初始化 Cookie…')
