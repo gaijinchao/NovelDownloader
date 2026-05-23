@@ -1,6 +1,6 @@
-# 番茄小说 Web 下载器
+# 番茄小说下载器
 
-基于 [fanqienovel-downloader](https://github.com/ying-ck/fanqienovel-downloader) 精简的 **Web 专用版**：浏览器界面管理书库，下载番茄小说为 **单个 TXT 文件**。
+基于 [fanqienovel-downloader](https://github.com/ying-ck/fanqienovel-downloader) 重构并精简的 **Web 专用版**：浏览器界面管理书库，下载番茄小说为 **单个 TXT 文件**。
 
 请勿滥用，且用且珍惜。
 
